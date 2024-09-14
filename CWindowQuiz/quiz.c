@@ -5,11 +5,15 @@
 
 #include <Windows.h>
 #include <dwmapi.h>
+#include <stdio.h>
 
 #pragma comment (lib, "Dwmapi")
 //#pragma comment(linker,"\"/manifestdependency:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture = '*' publicKeyToken = '6595b64144ccf1df' language = '*'\"");
 
 // constant values
+
+#define BUFFER_SIZE 1024
+
 #define ID_STARTQUIZ 100
 #define ID_ANSWER1	101
 #define ID_ANSWER2	102
@@ -20,6 +24,21 @@ const COLORREF BACKGROUND_COLOR = RGB(30, 30, 30);
 const COLORREF TEXT_COLOR = RGB(255, 255, 255);
 const COLORREF BUTTON_BACKGROUND = RGB(50, 50, 50);
 const COLORREF BUTTON_SELECTED_BACKGROUND = RGB(40, 40, 40);
+
+// structs definitions
+
+typedef struct Flashcard
+{
+	wchar_t* term;
+	wchar_t* definition;
+	struct Flashcard* next;
+} Flashcard, *Flashcard_ptr;
+
+typedef struct FlashcardList
+{
+	Flashcard_ptr head;
+	Flashcard_ptr tail;
+} FlashcardList, *FlashcardList_ptr;
 
 // global variables
 
@@ -41,6 +60,7 @@ int quizWidth;
 int quizHeight;
 
 // function prototypes
+// UI functions
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK MenuWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
@@ -52,6 +72,11 @@ void CenterWindow(HWND hwnd, int width, int height);
 void ShowMenuScreen(HWND hwnd);
 void ShowQuizScreen(HWND hwnd);
 void PaintBackground(HWND hwnd);
+
+// app logic functions
+BOOL CreateFlashcardList();
+void FreeFlashcardList(Flashcard_ptr head);
+BOOL AddFlashcard(FlashcardList_ptr list, wchar_t* term, wchar_t* definition);
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow)
 {
@@ -134,6 +159,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 				return -1;
 			}
 			ShowMenuScreen(hwnd);
+			CreateFlashcardList();
 			break;
 		}
 
@@ -250,11 +276,11 @@ LRESULT CALLBACK MenuWindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 	switch (uMsg)
 	{
 	case WM_COMMAND:
-		SendMessage(GetParent(hwnd), uMsg, wParam, lParam);
-		return 0;
+		return SendMessage(GetParent(hwnd), uMsg, wParam, lParam);
+	
 	case WM_DRAWITEM:
-		SendMessage(GetParent(hwnd), uMsg, wParam, lParam);
-		return 0;
+		return SendMessage(GetParent(hwnd), uMsg, wParam, lParam);
+	
 	default:
 		return CallWindowProc(defaultMenuScreenProc, hwnd, uMsg, wParam, lParam);
 	}
@@ -497,4 +523,160 @@ void PaintBackground(HWND hwnd)
 	FillRect(hdc, &ps.rcPaint, hbrBackground);
 	EndPaint(hwnd, &ps);
 	ReleaseDC(hwnd, hdc);
+}
+
+BOOL CreateFlashcardList()
+{
+	wchar_t path[MAX_PATH];
+	GetModuleFileName(NULL, path, MAX_PATH);
+	MessageBox(NULL, path, L"Path", MB_OK | MB_ICONINFORMATION);
+
+	//LPCWSTR filePath = L"C:\\Users\\haenim\\source\\repos\\CWindowQuiz\\CWindowQuiz\\quiz_files\\programming_wordss.csv";
+	//HANDLE hFile = CreateFile(
+	//	filePath,				// full path to the file
+	//	GENERIC_READ,			// desired access
+	//	0,						// prevent other processes from opening the file
+	//	NULL,					// security attributes
+	//	OPEN_EXISTING,			// only open existing file
+	//	FILE_ATTRIBUTE_NORMAL,	// normal file
+	//	NULL					// no template file
+	//);
+
+	//if (hFile == INVALID_HANDLE_VALUE)
+	//{
+	//	DWORD errorCode = GetLastError();
+	//	LPVOID errorMsg;
+
+	//	FormatMessage(
+	//		FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+	//		NULL,
+	//		errorCode,
+	//		0,
+	//		(LPWSTR)&errorMsg,
+	//		0,
+	//		NULL
+	//	);
+
+	//	MessageBox(
+	//		NULL,
+	//		(LPWSTR)errorMsg,
+	//		L"File opening error",
+	//		MB_OK | MB_ICONERROR
+	//	);
+
+	//	LocalFree(errorMsg);
+	//	return FALSE;
+	//}
+	//CloseHandle(hFile);
+
+	const wchar_t delimiter = L';';
+	wchar_t* filePath = L"C:\\Users\\haenim\\source\\repos\\CWindowQuiz\\CWindowQuiz\\quiz_files\\programming_words.csv";
+	FILE* stream;
+	errno_t err;
+
+	err = _wfopen_s(&stream, filePath, L"r, ccs=UTF-8");
+	if (err)
+	{
+		wchar_t errorMsg[256];
+		swprintf(errorMsg, 256, L"File open error: %d", err);
+		MessageBox(NULL, errorMsg, L"ERROR", MB_OK | MB_ICONERROR);
+		return FALSE;
+	}
+
+	wchar_t buffer[BUFFER_SIZE];
+	wchar_t term[BUFFER_SIZE];
+	wchar_t definition[BUFFER_SIZE];
+	//wchar_t test[BUFFER_SIZE];
+
+	size_t pos;
+	size_t length;
+
+	FlashcardList list = { NULL, NULL };
+
+	while (fgetws(buffer, BUFFER_SIZE, stream))
+	{
+		length = wcsnlen(buffer, BUFFER_SIZE);	// do I need to use secure functions if buffer size is limited in fgetws?
+		if (length == BUFFER_SIZE - 1 && buffer[BUFFER_SIZE - 2] != L'\n')
+		{
+			// handle truncation
+		}
+
+		pos = wcscspn(buffer, &delimiter);
+		if (pos == length)
+		{
+			// incorrect format
+		}
+
+		// TODO 
+		// if (pos == length) there is no character in string
+		// handle if line length is larger than buffer
+		// dynamic memory allocation based on line, term and definition lengths
+		wcsncpy_s(term, BUFFER_SIZE, buffer, pos);
+		wcsncpy_s(definition, BUFFER_SIZE, buffer + pos + 1, _TRUNCATE);
+
+		AddFlashcard(&list, term, definition);
+
+		// test
+		//wcsncpy_s(test, BUFFER_SIZE, term, BUFFER_SIZE);
+		//wcscat_s(test, BUFFER_SIZE, definition);
+		//MessageBox(NULL, test, L"TEST", MB_OK);
+	}
+
+	Flashcard_ptr current = list.head;
+	wchar_t testString[BUFFER_SIZE];
+
+	while (current)
+	{
+		_snwprintf_s(testString, sizeof(testString), _TRUNCATE, L"%ls: %ls", current->term, current->definition);
+		MessageBox(NULL, testString, L"INFO", MB_OK);
+		current = current->next;
+	}
+
+	FreeFlashcardList(list.head);
+
+	if (stream)
+	{
+		fclose(stream);
+	}
+
+	return TRUE;
+}
+
+BOOL AddFlashcard(FlashcardList_ptr list, wchar_t* term, wchar_t* definition)
+{
+	Flashcard_ptr newFlashcard = (Flashcard_ptr)malloc(sizeof(Flashcard));
+	if (!newFlashcard)
+	{
+		// Memory allocation failed
+		return FALSE;
+	}
+
+	newFlashcard->term = term;
+	newFlashcard->definition = definition;
+	newFlashcard->next = NULL;
+
+	if (list->head == NULL)
+	{
+		list->head = newFlashcard;
+		list->tail = newFlashcard;
+	}
+	else
+	{
+		list->tail->next = newFlashcard;
+		list->tail = newFlashcard;
+	}
+	return TRUE;
+}
+
+void FreeFlashcardList(Flashcard_ptr head)
+{
+	Flashcard_ptr current = head;
+	Flashcard_ptr next = NULL;
+
+	while (current)
+	{
+		next = current->next;
+		free(current);
+		current = next;
+	}
 }
